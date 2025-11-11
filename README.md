@@ -247,19 +247,19 @@ DELETE /productos/{id}
 
 El pipeline consta de 3 etapas:
 
-### 1. Build (20 puntos)
+### 1. Build 
 - Checkout del código
 - Instalación de dependencias
 - Validación de sintaxis (flake8)
 - Verificación de archivos requeridos
 
-### 2. Docker (25 puntos)
+### 2. Docker 
 - Build de imagen Docker
 - Versionado automático (SHA, fecha)
 - Push a Docker Hub
 - Cache para optimizar builds
 
-### 3. Deploy (10 puntos)
+### 3. Deploy
 - Conexión SSH a EC2
 - Pull de imagen desde Docker Hub
 - Despliegue del contenedor
@@ -313,32 +313,6 @@ aws sts get-caller-identity
 # Verificar que la IP pública es correcta
 ```
 
-## Preguntas de la Práctica (Actividad 6)
-
-### 1. ¿Cuál es el paso que más se te ha complicado?
-
-**Respuesta sugerida**: La configuración de las credenciales de AWS Academy con GitHub Actions, debido a que las credenciales temporales expiran y requieren actualización manual cada vez que se inicia una nueva sesión del laboratorio. Esto complica la automatización completa del pipeline.
-
-### 2. ¿Cuáles factores de 12 factores se están cubriendo?
-
-Ver sección "Factores de 12-Factor App Implementados" arriba.
-
-### 3. ¿Cuál consideras el paso más complicado de implementar?
-
-**Respuesta sugerida**: El despliegue automatizado en EC2 (Actividad 5), porque requiere:
-- Configuración correcta de SSH
-- Manejo de credenciales sensibles
-- Orquestación de múltiples comandos remotos
-- Gestión del estado del contenedor anterior
-- Verificación de que el despliegue fue exitoso
-
-## Consejos para AWS Academy
-
-1. **Actualizar credenciales frecuentemente**: Crea un script para facilitar esto
-2. **Usar Docker Hub**: Más confiable que ECR con credenciales temporales
-3. **Documentar IPs**: La IP de EC2 puede cambiar
-4. **Backup de configuración**: Guarda tus configuraciones localmente
-5. **Tiempo de laboratorio**: Planifica tus pruebas dentro del tiempo disponible
 
 ## Testing
 
