@@ -28,13 +28,13 @@ def create_table(dynamodb, table_name):
         
         print(f"Creando tabla {table_name}...")
         table.wait_until_exists()
-        print(f"✓ Tabla {table_name} creada exitosamente")
+        print(f" Tabla {table_name} creada exitosamente")
         return True
     except dynamodb.meta.client.exceptions.ResourceInUseException:
-        print(f"⚠ La tabla {table_name} ya existe")
+        print(f" La tabla {table_name} ya existe")
         return True
     except Exception as e:
-        print(f"✗ Error al crear tabla {table_name}: {str(e)}")
+        print(f" Error al crear tabla {table_name}: {str(e)}")
         return False
 
 def main():
@@ -58,10 +58,10 @@ def main():
     
     print("="*50)
     if success:
-        print("✓ Todas las tablas fueron creadas exitosamente")
+        print(" Todas las tablas fueron creadas exitosamente")
         return 0
     else:
-        print("✗ Hubo errores al crear algunas tablas")
+        print(" Hubo errores al crear algunas tablas")
         return 1
 
 if __name__ == '__main__':

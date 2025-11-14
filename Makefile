@@ -18,8 +18,9 @@ install:
 	@echo "✓ Dependencias instaladas"
 
 run:
+run:
 	@echo "Ejecutando aplicación en modo local..."
-	@export ENVIRONMENT=local && python app.py
+	@export ENVIRONMENT=local && export PORT=5001 && python3 app.py
 
 test:
 	@echo "Probando API..."

@@ -174,7 +174,7 @@ jobs:
             sleep 3
             curl -f http://localhost/health || echo "Advertencia: Health check falló"
             
-            echo -e "${GREEN}✓ Despliegue completado exitosamente${NC}"
+            echo -e "${GREEN} Despliegue completado exitosamente${NC}"
           else
             echo "Error: El contenedor no está corriendo"
             sudo docker logs ${{ env.APP_NAME }}
@@ -188,7 +188,7 @@ jobs:
       if: always()
       run: |
         if [ ${{ job.status }} == 'success' ]; then
-          echo "✓ Deploy exitoso a http://${{ secrets.EC2_HOST }}"
+          echo " Deploy exitoso a http://${{ secrets.EC2_HOST }}"
         else
-          echo "✗ Deploy falló"
+          echo " Deploy falló"
         fi

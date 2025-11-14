@@ -342,10 +342,3 @@ curl http://$EC2_IP/productos
 - [AWS DynamoDB](https://docs.aws.amazon.com/dynamodb/)
 - [12-Factor App](https://12factor.net/)
 
-## Autor
-
-César - Arquitectura de Software
-
-## Licencia
-
-Este proyecto es para fines educativos.
