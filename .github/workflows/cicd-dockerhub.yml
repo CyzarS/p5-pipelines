@@ -177,7 +177,7 @@ jobs:
           AWS_SESSION_TOKEN: ${{ secrets.AWS_SESSION_TOKEN }}
           AWS_REGION: ${{ secrets.AWS_REGION || 'us-east-1' }}
         run: |
-          ssh -i ~/.ssh/ec2_key -o StrictHostKeyChecking=no ${EC2_USER}@${EC2_HOST} << 'ENDSSH'
+          ssh -i ~/.ssh/ec2_key -o StrictHostKeyChecking=no ${EC2_USER}@${EC2_HOST} << ENDSSH
             # Detener y eliminar contenedor anterior si existe
             docker stop productos-api 2>/dev/null || true
             docker rm productos-api 2>/dev/null || true
@@ -190,10 +190,10 @@ jobs:
               --name productos-api \
               -p 5002:5002 \
               -e ENVIRONMENT=prod \
-              -e AWS_REGION=${AWS_REGION} \
-              -e AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID} \
-              -e AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY} \
-              -e AWS_SESSION_TOKEN=${AWS_SESSION_TOKEN} \
+              -e AWS_REGION="${AWS_REGION}" \
+              -e AWS_ACCESS_KEY_ID="${AWS_ACCESS_KEY_ID}" \
+              -e AWS_SECRET_ACCESS_KEY="${AWS_SECRET_ACCESS_KEY}" \
+              -e AWS_SESSION_TOKEN="${AWS_SESSION_TOKEN}" \
               -e TABLE_NAME=productos_prod \
               --restart unless-stopped \
               ${DOCKERHUB_USERNAME}/${IMAGE_NAME}:latest
