@@ -1,0 +1,224 @@
+name: CI/CD Pipeline Productos (Docker Hub)
+
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+    branches: [main, master]
+
+env:
+  IMAGE_NAME: productos-api
+
+jobs:
+  build:
+    name: Build and Test
+    runs-on: ubuntu-latest
+    
+    steps:
+      - uses: actions/checkout@v4
+      
+      - uses: actions/setup-python@v4
+        with:
+          python-version: '3.11'
+          cache: 'pip'
+      
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          pip install flake8
+      
+      - name: Lint
+        run: |
+          flake8 . --count --select=E9,F63,F7,F82 --show-source --statistics
+          flake8 . --count --exit-zero --max-complexity=10 --max-line-length=127 --statistics
+        continue-on-error: true
+      
+      - name: Verify app
+        run: python -c "import app; print('App OK')"
+      
+      - uses: actions/upload-artifact@v3
+        with:
+          name: app-files
+          path: |
+            app.py
+            requirements.txt
+          retention-days: 1
+
+  setup-dynamodb:
+    name: Create DynamoDB Tables
+    runs-on: ubuntu-latest
+    needs: build
+    if: github.event_name == 'push'
+    
+    steps:
+      - uses: actions/checkout@v4
+      
+      - uses: actions/setup-python@v4
+        with:
+          python-version: '3.11'
+      
+      - name: Install boto3
+        run: pip install boto3
+      
+      - name: Configure AWS Credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-session-token: ${{ secrets.AWS_SESSION_TOKEN }}
+          aws-region: ${{ secrets.AWS_REGION || 'us-east-1' }}
+      
+      - name: Create DynamoDB Tables
+        run: |
+          python setup_dynamodb.py
+          echo " Tablas creadas/verificadas en DynamoDB"
+      
+      - name: Tables Summary
+        run: |
+          echo "##  DynamoDB Tables" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo " Tablas creadas o verificadas:" >> $GITHUB_STEP_SUMMARY
+          echo "- productos_local" >> $GITHUB_STEP_SUMMARY
+          echo "- productos_prod" >> $GITHUB_STEP_SUMMARY
+
+  docker:
+    name: Build and Push to Docker Hub
+    runs-on: ubuntu-latest
+    needs: [build, setup-dynamodb]
+    if: github.event_name == 'push'
+    
+    steps:
+      - uses: actions/checkout@v4
+      
+      - uses: actions/download-artifact@v3
+        with:
+          name: app-files
+      
+      - name: Login to Docker Hub
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+      
+      - name: Generate tags
+        id: meta
+        run: |
+          SHORT_SHA=$(echo ${{ github.sha }} | cut -c1-7)
+          TIMESTAMP=$(date +%Y%m%d-%H%M%S)
+          IMAGE_TAG="${{ secrets.DOCKERHUB_USERNAME }}/${{ env.IMAGE_NAME }}:${SHORT_SHA}-${TIMESTAMP}"
+          LATEST_TAG="${{ secrets.DOCKERHUB_USERNAME }}/${{ env.IMAGE_NAME }}:latest"
+          
+          echo "tags=${IMAGE_TAG}" >> $GITHUB_OUTPUT
+          echo "latest=${LATEST_TAG}" >> $GITHUB_OUTPUT
+          echo "image_name=${IMAGE_TAG}" >> $GITHUB_OUTPUT
+          echo "📦 Image: ${IMAGE_TAG}"
+      
+      - name: Create Dockerfile
+        run: |
+          cat > Dockerfile << 'EOF'
+          FROM python:3.11-slim
+          WORKDIR /app
+          COPY requirements.txt .
+          RUN pip install --no-cache-dir -r requirements.txt
+          COPY app.py .
+          EXPOSE 5002
+          ENV ENVIRONMENT=prod
+          ENV PORT=5002
+          ENV HOST=0.0.0.0
+          CMD ["gunicorn", "--bind", "0.0.0.0:5002", "--workers", "4", "--timeout", "120", "app:app"]
+          EOF
+      
+      - name: Build and Push
+        env:
+          IMAGE_TAG: ${{ steps.meta.outputs.tags }}
+          LATEST_TAG: ${{ steps.meta.outputs.latest }}
+        run: |
+          docker build -t ${IMAGE_TAG} -t ${LATEST_TAG} .
+          docker push ${IMAGE_TAG}
+          docker push ${LATEST_TAG}
+          echo " Pushed to Docker Hub"
+      
+      - name: Summary
+        run: |
+          echo "##  Docker Image" >> $GITHUB_STEP_SUMMARY
+          echo "- **Image:** ${{ steps.meta.outputs.tags }}" >> $GITHUB_STEP_SUMMARY
+          echo "- **Latest:** ${{ steps.meta.outputs.latest }}" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### Pull:" >> $GITHUB_STEP_SUMMARY
+          echo "\`\`\`bash" >> $GITHUB_STEP_SUMMARY
+          echo "docker pull ${{ steps.meta.outputs.latest }}" >> $GITHUB_STEP_SUMMARY
+          echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
+
+  deploy:
+    name: Deploy to EC2
+    runs-on: ubuntu-latest
+    needs: docker
+    if: github.event_name == 'push'
+    
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Configure SSH
+        run: |
+          mkdir -p ~/.ssh
+          echo "${{ secrets.EC2_SSH_KEY }}" > ~/.ssh/ec2_key
+          chmod 600 ~/.ssh/ec2_key
+          ssh-keyscan -H ${{ secrets.EC2_HOST }} >> ~/.ssh/known_hosts
+      
+      - name: Deploy to EC2
+        env:
+          EC2_USER: ${{ secrets.EC2_USER }}
+          EC2_HOST: ${{ secrets.EC2_HOST }}
+          DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
+          IMAGE_NAME: ${{ env.IMAGE_NAME }}
+          AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          AWS_SESSION_TOKEN: ${{ secrets.AWS_SESSION_TOKEN }}
+          AWS_REGION: ${{ secrets.AWS_REGION || 'us-east-1' }}
+        run: |
+          ssh -i ~/.ssh/ec2_key -o StrictHostKeyChecking=no ${EC2_USER}@${EC2_HOST} << 'ENDSSH'
+            # Detener y eliminar contenedor anterior si existe
+            docker stop productos-api 2>/dev/null || true
+            docker rm productos-api 2>/dev/null || true
+            
+            # Pull de la nueva imagen
+            docker pull ${DOCKERHUB_USERNAME}/${IMAGE_NAME}:latest
+            
+            # Ejecutar el contenedor
+            docker run -d \
+              --name productos-api \
+              -p 5002:5002 \
+              -e ENVIRONMENT=prod \
+              -e AWS_REGION=${AWS_REGION} \
+              -e AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID} \
+              -e AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY} \
+              -e AWS_SESSION_TOKEN=${AWS_SESSION_TOKEN} \
+              -e TABLE_NAME=productos_prod \
+              --restart unless-stopped \
+              ${DOCKERHUB_USERNAME}/${IMAGE_NAME}:latest
+            
+            # Verificar que el contenedor está corriendo
+            sleep 5
+            docker ps | grep productos-api
+            
+            # Health check
+            curl -f http://localhost:5002/health || exit 1
+            
+            echo "✅ Deployment exitoso"
+          ENDSSH
+      
+      - name: Deployment Summary
+        run: |
+          echo "##  Deployment" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo " Aplicación desplegada en EC2" >> $GITHUB_STEP_SUMMARY
+          echo "- **Host:** ${{ secrets.EC2_HOST }}" >> $GITHUB_STEP_SUMMARY
+          echo "- **Port:** 5002" >> $GITHUB_STEP_SUMMARY
+          echo "- **Environment:** prod" >> $GITHUB_STEP_SUMMARY
+          echo "- **Table:** productos_prod" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### Health Check:" >> $GITHUB_STEP_SUMMARY
+          echo "\`\`\`bash" >> $GITHUB_STEP_SUMMARY
+          echo "curl http://${{ secrets.EC2_HOST }}:5002/health" >> $GITHUB_STEP_SUMMARY
+          echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
